@@ -13,6 +13,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <sstream>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -94,6 +95,7 @@ double request_datapoint(FIFORequestChannel& chan, int person, double seconds, i
 }
 
 void dump_first_1000(FIFORequestChannel& chan, int person, const string& out_csv) {
+    ensure_directory_exists("received");
     ofstream output(out_csv, ios::trunc);
     if (!output.is_open()) {
         throw runtime_error("failed to open output file: " + out_csv);
@@ -209,7 +211,7 @@ unique_ptr<FIFORequestChannel> request_new_channel(FIFORequestChannel& control) 
         throw runtime_error("failed to request new channel");
     }
 
-    array<char, MAX_MESSAGE> name_buffer{};
+    array<char, 64> name_buffer{};
     int received = control.cread(name_buffer.data(), name_buffer.size());
     if (received <= 0) {
         throw runtime_error("failed to read new channel name");
@@ -283,11 +285,6 @@ int main(int argc, char* argv[]) {
         cerr << "-p is required with -t and -e" << endl;
         return 1;
     }
-    if (!patient_specified && !file_specified) {
-        cerr << "no operation requested" << endl;
-        return 1;
-    }
-
     pid_t child_pid = fork();
     if (child_pid < 0) {
         perror("fork");
@@ -329,11 +326,18 @@ int main(int argc, char* argv[]) {
 
         if (do_single) {
             double value = request_datapoint(*active, patient, seconds, ecg);
-            cout << defaultfloat << setprecision(15) << value << endl;
+            ostringstream time_stream;
+            time_stream << fixed << setprecision(3) << seconds;
+            ostringstream value_stream;
+            value_stream << fixed << setprecision(2) << value;
+            cout << "For person " << patient
+                 << ", at time " << time_stream.str()
+                 << ", the value of ecg " << ecg
+                 << " is " << value_stream.str() << endl;
         }
 
         if (do_dump) {
-            dump_first_1000(*active, patient, "x1.csv");
+            dump_first_1000(*active, patient, "received/x1.csv");
         }
 
         if (file_specified) {
